@@ -1,6 +1,6 @@
-# Volkern MCP Server (v2.0.0)
+# Volkern MCP Server (v2.1.0)
 
-Servidor MCP (Model Context Protocol) para integrar Volkern CRM con agentes de IA como Claude, GPT, y otros clientes compatibles con MCP.
+Servidor MCP (Model Context Protocol) para integrar Volkern CRM con agentes de IA. Incluye transporte STDIO para clientes locales y Streamable HTTP para clientes remotos como ChatGPT.
 
 ## Novedades v2.0.0 - Ciclo Comercial Completo
 
@@ -25,6 +25,39 @@ Servidor MCP (Model Context Protocol) para integrar Volkern CRM con agentes de I
 - **Galería multimedia**: Imágenes, video tours, documentos técnicos, tours 360°
 - **Precios flexibles**: Pago único, recurrente o por hora con descuentos por volumen
 
+## Transporte remoto compatible con ChatGPT (Streamable HTTP)
+
+El servidor puede ejecutarse como endpoint MCP remoto mediante Streamable HTTP. Cada petición HTTP debe incluir la API Key individual del usuario:
+
+```http
+Authorization: Bearer TU_API_KEY_INDIVIDUAL
+```
+
+La clave se utiliza en el contexto aislado de esa petición y se reenvía a la API de Volkern. No se utiliza una clave global compartida en modo HTTP ni se acepta un tenantId enviado por el modelo. La API de Volkern debe validar la clave y resolver el tenant y sus permisos.
+
+### Ejecutar en modo HTTP
+
+```bash
+npm install
+npm run build
+npm run start:http
+```
+
+Variables de entorno:
+- `MCP_TRANSPORT=http`: activa Streamable HTTP. Sin esta variable se mantiene STDIO.
+- `MCP_HOST`: interfaz de escucha (por defecto `127.0.0.1`).
+- `MCP_PORT`: puerto HTTP (por defecto `3001`).
+- `MCP_PATH`: ruta MCP (por defecto `/mcp`).
+- `VOLKERN_API_URL`: API backend (por defecto `https://volkern.app/api`).
+
+Publica el endpoint exclusivamente detrás de HTTPS mediante un proxy inverso. No expongas directamente el puerto HTTP a Internet.
+
+### Conectar desde ChatGPT
+
+Configura la URL pública HTTPS del endpoint Streamable HTTP, por ejemplo `https://tu-dominio.example/mcp`, y elige autenticación Bearer/API Key para proporcionar la clave individual del usuario. No coloques claves en la URL ni en parámetros de consulta.
+
+**Requisito de seguridad:** este adaptador exige el encabezado Bearer, pero la validez de la clave y la autorización de cada operación dependen de la API de Volkern. Antes de producción, confirma que todos los endpoints de la API validan la clave y aplican aislamiento multi-tenant. El adaptador no puede sustituir esa autorización backend.
+
 ## Instalación
 
 ### Opción 1: Instalación global desde NPM (Recomendado)
@@ -42,7 +75,7 @@ npx volkern-mcp-server
 ### Opción 3: Desde código fuente
 
 ```bash
-git clone https://github.com/volkern/mcp-server.git
+git clone https://github.com/DeXpertmx/mcp-volkern.git
 cd mcp-server
 npm install
 npm run build
@@ -53,7 +86,7 @@ npm run build
 El servidor requiere las siguientes variables de entorno:
 
 ```bash
-export VOLKERN_API_KEY="tu_api_key_aqui"
+export VOLKERN_API_KEY="tu_api_key_individual"
 export VOLKERN_API_URL="https://volkern.app/api"  # Opcional, usa este valor por defecto
 ```
 
