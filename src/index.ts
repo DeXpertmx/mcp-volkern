@@ -8,17 +8,16 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createServer } from "node:http";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 // ============================================
 // Configuration
 // ============================================
 const VOLKERN_API_URL = process.env.VOLKERN_API_URL || "https://volkern.app/api";
 const VOLKERN_API_KEY = process.env.VOLKERN_API_KEY || "";
-
-if (!VOLKERN_API_KEY) {
-  console.error("Error: VOLKERN_API_KEY environment variable is required");
-  process.exit(1);
-}
+const requestContext = new AsyncLocalStorage<{ apiKey: string }>();
 
 // ============================================
 // API Helper
@@ -28,12 +27,14 @@ async function volkernRequest(
   method: string = "GET",
   body?: Record<string, unknown>
 ): Promise<unknown> {
+  const apiKey = requestContext.getStore()?.apiKey || VOLKERN_API_KEY;
+  if (!apiKey) throw new Error("Missing API key for this MCP request");
   const url = `${VOLKERN_API_URL}${endpoint}`;
   
   const options: RequestInit = {
     method,
     headers: {
-      "Authorization": `Bearer ${VOLKERN_API_KEY}`,
+      "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
   };
@@ -999,59 +1000,110 @@ async function handleToolCall(
   }
 }
 
+
 // ============================================
 // Server Setup
 // ============================================
-const server = new Server(
-  {
-    name: "volkern-mcp-server",
-    version: "2.0.0",
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  }
-);
+function createMcpServer() {
+  const server = new Server(
+    { name: "volkern-mcp-server", version: "2.1.0" },
+    { capabilities: { tools: {} } }
+  );
 
-// List available tools
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools };
-});
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 
-// Handle tool calls
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    try {
+      const result = await handleToolCall(name, args as Record<string, unknown>);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: "text", text: "Error: " + errorMessage }],
+        isError: true,
+      };
+    }
+  });
+  return server;
+}
 
-  try {
-    const result = await handleToolCall(name, args as Record<string, unknown>);
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(result, null, 2),
-        },
-      ],
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Error: ${errorMessage}`,
-        },
-      ],
-      isError: true,
-    };
-  }
-});
+function getBearerToken(header: string | string[] | undefined): string | null {
+  if (typeof header !== "string") return null;
+  const match = /^Bearer\\s+(.+)$/i.exec(header.trim());
+  return match?.[1]?.trim() || null;
+}
 
-// Start server
+async function startHttpServer() {
+  const host = process.env.MCP_HOST || "127.0.0.1";
+  const port = Number(process.env.MCP_PORT || 3001);
+  const path = process.env.MCP_PATH || "/mcp";
+
+  const httpServer = createServer(async (req, res) => {
+    const requestUrl = new URL(req.url || "/", "http://" + (req.headers.host || "localhost"));
+    if (requestUrl.pathname !== path) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "Not found" }));
+      return;
+    }
+
+    const apiKey = getBearerToken(req.headers.authorization);
+    if (!apiKey) {
+      res.writeHead(401, { "content-type": "application/json", "www-authenticate": "Bearer" });
+      res.end(JSON.stringify({ error: "A valid Bearer API key is required" }));
+      return;
+    }
+
+    if (req.method !== "POST") {
+      res.writeHead(405, { allow: "POST", "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "Use POST with the MCP Streamable HTTP transport" }));
+      return;
+    }
+
+    await requestContext.run({ apiKey }, async () => {
+      const server = createMcpServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+      try {
+        await server.connect(transport);
+        await transport.handleRequest(req, res);
+      } catch (error) {
+        console.error("MCP HTTP request failed:", error instanceof Error ? error.message : "Unknown error");
+        if (!res.headersSent) {
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "MCP request failed" }));
+        }
+      } finally {
+        await transport.close().catch(() => undefined);
+        await server.close().catch(() => undefined);
+      }
+    });
+  });
+
+  httpServer.listen(port, host, () => {
+    console.error("Volkern MCP Streamable HTTP listening on http://" + host + ":" + port + path);
+  });
+}
+
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Volkern MCP Server running on stdio");
+  if (process.env.MCP_TRANSPORT === "http") {
+    await startHttpServer();
+    return;
+  }
+  if (!VOLKERN_API_KEY) {
+    console.error("Error: VOLKERN_API_KEY is required for STDIO mode");
+    process.exit(1);
+  }
+  await requestContext.run({ apiKey: VOLKERN_API_KEY }, async () => {
+    const server = createMcpServer();
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error("Volkern MCP Server running on stdio");
+  });
 }
 
 main().catch((error) => {
