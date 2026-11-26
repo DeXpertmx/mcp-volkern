@@ -29,6 +29,20 @@
                     "isRequired": false,
                     "format": "string",
                     "isSecret": false
+                },
+                {
+                    "name": "TRANSPORT",
+                    "description": "Transport mode: 'stdio' (default) for Claude Desktop, 'sse' for remote HTTP connections",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false
+                },
+                {
+                    "name": "PORT",
+                    "description": "Port for SSE transport mode (default: 3001)",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false
                 }
             ]
         }
