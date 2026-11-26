@@ -4,4 +4,3 @@ dist
 *.log
 .env
 temp_remote
-mcp-server.zip
