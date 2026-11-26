@@ -1,4 +1,4 @@
-# Volkern MCP Server (v2.0.0 — SDK v2, spec MCP 2026-07-28)
+# Volkern MCP Server (v2.0.1 — SDK v2, spec MCP 2026-07-28)
 
 Servidor MCP (Model Context Protocol) para integrar Volkern CRM con agentes de IA como Claude, GPT, y otros clientes compatibles con MCP.
 
@@ -377,6 +377,19 @@ Verifica que tu API key tenga los permisos necesarios en Volkern (Configuración
 
 ### Error 409: Conflicto de horario
 El slot solicitado ya está ocupado. Consulta disponibilidad con `volkern_check_disponibilidad`.
+
+## Publicación
+
+El paquete se publica desde esta carpeta:
+
+```bash
+npm login        # cuenta propietaria de volkern-mcp-server
+npm publish      # prepublishOnly compila y publica la versión de package.json
+```
+
+Antes de publicar, confirmar cuál es la última versión en npm (`npm view volkern-mcp-server version`) y no reutilizar un número ya publicado. Si hace falta subirla: `npm version patch|minor|major` (no reescribir a mano el lockfile).
+
+Para el registro MCP, desde esta misma carpeta: `npx mcp-publisher publish` (requiere sesión de GitHub del propietario de `io.github.DeXpertmx/mcp-volkern`; toma nombre y versión de `server.json`).
 
 ## Licencia
 

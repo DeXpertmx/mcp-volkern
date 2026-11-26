@@ -25,7 +25,7 @@ const VOLKERN_API_URL = process.env.VOLKERN_API_URL || "https://volkern.app/api"
 const VOLKERN_API_KEY = process.env.VOLKERN_API_KEY || "";
 const TRANSPORT = (process.env.TRANSPORT || "stdio").toLowerCase();
 const PORT = parseInt(process.env.PORT || "3001", 10);
-const VERSION = "2.0.0";
+const VERSION = "2.0.1";
 
 if (!VOLKERN_API_KEY) {
   console.error("Error: VOLKERN_API_KEY environment variable is required");
